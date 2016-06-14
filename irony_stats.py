@@ -1,42 +1,32 @@
 '''
-Code to reproduce the analyses in our ACL 2014 paper: 
+Code to reproduce the analyses in our ACL 2014 paper:
 
     Humans Require Context to Infer Ironic Intent (so Computers Probably do, too)
         Byron C Wallace, Do Kook Choe, Laura Kertz, and Eugene Charniak
 
-Made possible by support from the Army Research Office (ARO), grant# 528674 
+Made possible by support from the Army Research Office (ARO), grant# 528674
 "Sociolinguistically Informed Natural Lanuage Processing: Automating Irony Detection"
 
 Contact: Byron Wallace (byron.wallace@gmail.com)
 
-The main methods of interest are context_stats and ml_bow. 
+The main methods of interest are context_stats and ml_bow.
 '''
 
-''' built-ins. '''
-import pdb
-import sys
-import collections
-from collections import defaultdict
 import re
-import itertools
 import sqlite3
 
-''' dependencies: sklearn, numpy, statsmodels '''
-import sklearn
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.cross_validation import KFold
-from sklearn.grid_search import GridSearchCV
-from sklearn.svm import SVC
-from sklearn.linear_model import SGDClassifier
-from sklearn.naive_bayes import MultinomialNB
+try:
+    from sklearn.feature_extraction.text import CountVectorizer
+    from sklearn.cross_validation import KFold
+    from sklearn.grid_search import GridSearchCV
+    from sklearn.linear_model import SGDClassifier
+    import statsmodels.api as sm
+except ImportError:
+    print 'Failed to load dependencies. Please run the following command and try again:'
+    print
+    print '    easy_install scikit-learn statsmodels'
+    exit(1)
 
-import numpy as np
-import statsmodels.api as sm
-
-### assumes the database file is local!
-# download this from: 
-# email me (byron.wallace@gmail.com) if this url
-# fails.
 db_path = "ironate.db"
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
@@ -54,13 +44,13 @@ def _grab_single_element(result_set, COL=0):
 
 def get_all_comment_ids():
     return _grab_single_element(cursor.execute(
-                '''select distinct comment_id from irony_label where labeler_id in %s;''' % 
-                    labeler_id_str)) 
+                '''select distinct comment_id from irony_label where labeler_id in %s;''' %
+                    labeler_id_str))
 
 def get_ironic_comment_ids():
     cursor.execute(
-        '''select distinct comment_id from irony_label 
-            where forced_decision=0 and label=1 and labeler_id in %s;''' % 
+        '''select distinct comment_id from irony_label
+            where forced_decision=0 and label=1 and labeler_id in %s;''' %
             labeler_id_str)
 
     ironic_comments = _grab_single_element(cursor.fetchall())
@@ -90,16 +80,16 @@ def context_stats():
 
     # pre-context / forced decisions
     forced_decisions = _grab_single_element(cursor.execute(
-                '''select distinct comment_id from irony_label where forced_decision=1 and labeler_id in %s;''' % 
-                    labeler_id_str)) 
+                '''select distinct comment_id from irony_label where forced_decision=1 and labeler_id in %s;''' %
+                    labeler_id_str))
 
     for labeler in labelers_of_interest:
         labeler_forced_decisions = _grab_single_element(cursor.execute(
-                '''select distinct comment_id from irony_label where forced_decision=1 and labeler_id = %s;''' % 
+                '''select distinct comment_id from irony_label where forced_decision=1 and labeler_id = %s;''' %
                     labeler))
 
         all_labeler_decisions = _grab_single_element(cursor.execute(
-                '''select distinct comment_id from irony_label where forced_decision=0 and labeler_id = %s;''' % 
+                '''select distinct comment_id from irony_label where forced_decision=0 and labeler_id = %s;''' %
                     labeler))
 
         p_labeler_forced = float(len(labeler_forced_decisions))/float(len(all_labeler_decisions))
@@ -111,9 +101,9 @@ def context_stats():
     ironic_comments = get_ironic_comment_ids()
     ironic_ids_str = _make_sql_list_str(ironic_comments)
     forced_ironic_ids =  _grab_single_element(cursor.execute(
-                '''select distinct comment_id from irony_label where 
-                        forced_decision=1 and comment_id in %s and labeler_id in %s;''' % 
-                                (ironic_ids_str, labeler_id_str))) 
+                '''select distinct comment_id from irony_label where
+                        forced_decision=1 and comment_id in %s and labeler_id in %s;''' %
+                                (ironic_ids_str, labeler_id_str)))
 
     ''' regression bit: construct target vector + design matrix  '''
     X,y = [],[]
@@ -132,19 +122,19 @@ def context_stats():
     X = sm.add_constant(X, prepend=True)
     logit_mod = sm.Logit(y, X)
     logit_res = logit_mod.fit()
-    
+
     print logit_res.summary()
     return logit_res
 
 def ml_bow(show_features=False):
     '''
-    Section 5, Eq (2) in the paper. 
+    Section 5, Eq (2) in the paper.
 
     > irony_stats.ml_bow()
     Optimization terminated successfully.
              Current function value: 0.611578
              Iterations 5
-                               Logit Regression Results                           
+                               Logit Regression Results
     ==============================================================================
     Dep. Variable:                      y   No. Observations:                 1949
     Model:                          Logit   Df Residuals:                     1946
@@ -162,9 +152,9 @@ def ml_bow(show_features=False):
     ==============================================================================
 
     TWO NOTES:
-    1 A small bug in the original SQL code here resulted in a slightly different value for 
+    1 A small bug in the original SQL code here resulted in a slightly different value for
     x2; however the resutls are qualitatively the same as in the paper.
-    2 In any case, this result will vary slightly because we are using stochastic gradient 
+    2 In any case, this result will vary slightly because we are using stochastic gradient
     descent! Still, the x2 estimate and CI (which is of interest) should be quite close.
     '''
     all_comment_ids = get_labeled_thrice_comments()
@@ -173,8 +163,8 @@ def ml_bow(show_features=False):
     #ironic_ids_str = _make_sql_list_str(ironic_comments)
 
     forced_decision_ids = _grab_single_element(cursor.execute(
-                '''select distinct comment_id from irony_label where forced_decision=1 and labeler_id in %s;''' % 
-                    labeler_id_str)) 
+                '''select distinct comment_id from irony_label where forced_decision=1 and labeler_id in %s;''' %
+                    labeler_id_str))
 
     comment_texts, y = [], []
     for id_ in all_comment_ids:
@@ -202,10 +192,10 @@ def ml_bow(show_features=False):
             comment = comment + " PUNCxQUESTION_MARK"
         if len(re.findall(r'%s' % interrobang_RE_str, comment)) > 0:
             comment = comment + " PUNCxINTERROBANG"
-        
+
         if any([len(s) > 2 and str.isupper(s) for s in comment.split(" ")]):
-            comment = comment + " PUNCxUPPERCASE" 
-        
+            comment = comment + " PUNCxUPPERCASE"
+
         comment_texts[i] = comment
     # vectorize
     vectorizer = CountVectorizer(max_features=50000, ngram_range=(1,2), binary=True, stop_words="english")
@@ -228,7 +218,7 @@ def ml_bow(show_features=False):
         clf = GridSearchCV(svm, parameters, scoring='f1')
         clf.fit(X_train, y_train)
         preds = clf.predict(X_test)
-        
+
         #precision, recall, f1, support = sklearn.metrics.precision_recall_fscore_support(y_test, preds)
         tp, fp, tn, fn = 0,0,0,0
         N = len(preds)
@@ -237,7 +227,7 @@ def ml_bow(show_features=False):
             cur_id = test_ids[i]
             irony_indicator = 1 if cur_id in ironic_comment_ids else 0
             forced_decision_indicator = 1 if cur_id in forced_decision_ids else 0
-            # so x1 is the coefficient for forced decisions (i.e., context); 
+            # so x1 is the coefficient for forced decisions (i.e., context);
             # x2 is the coeffecient for irony (overall)
             X_context.append([irony_indicator, forced_decision_indicator])
 
@@ -248,7 +238,7 @@ def ml_bow(show_features=False):
                 # ironic
                 if pred_y_i == 1:
                     # true positive
-                    tp += 1 
+                    tp += 1
                     y_mistakes.append(0)
                 else:
                     # false negative
@@ -300,6 +290,17 @@ def get_labeled_thrice_comments():
     thricely_labeled_comment_ids = _grab_single_element(cursor.fetchall())
     return thricely_labeled_comment_ids
 
+def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('action', choices=['context_stats', 'ml_bow'], help='action to run')
+    opts = parser.parse_args()
 
+    if opts.action == 'context_stats':
+        context_stats()
+    elif opts.action == 'ml_bow':
+        ml_bow(opts.verbose)
 
-
+if __name__ == '__main__':
+    main()
